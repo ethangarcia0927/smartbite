@@ -3,23 +3,16 @@ import mysql from 'mysql2/promise';
 import bcrypt from 'bcrypt';
 import session from 'express-session';
 import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 
-// ============================================================
-// TODO (@matthias): TEMPORARY: Toggle between RapidAPI and direct Spoonacular API
-// Set to false when original API key is working again
-// ============================================================
-const useRapidAPI = true;
-
-// Spoonacular API configuration
-const SPOONACULAR_API_KEY = useRapidAPI 
-    ? '63f9d1113amshe4c2edf69bde18ap1f8be7jsne769890e5b4e'  // RapidAPI key
-    : 'd4d6a22105f942d8a39a79227cbdbb82';                      // Direct API key
-
-const SPOONACULAR_BASE_URL = useRapidAPI
-    ? 'https://spoonacular-recipe-food-nutrition-v1.p.rapidapi.com'  // RapidAPI endpoint
-    : 'https://api.spoonacular.com';                                  // Direct endpoint
+// API configuration from environment variables
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+const SPOONACULAR_BASE_URL = 'https://spoonacular-recipe-food-nutrition-v1.p.rapidapi.com';
 
 app.set('view engine', 'ejs');
 app.use(express.static('public'));
@@ -29,17 +22,17 @@ app.use(express.json());
 //Session settings
 app.set('trust proxy', 1);  
 app.use(session({ 
-    secret: 'keyboard cat', 
+    secret: process.env.SESSION_SECRET || 'keyboard cat', 
     resave: false, 
     saveUninitialized: true 
 }))
 
 // === MySQL connection pool ===
 const pool = mysql.createPool({
-    host: "mgs0iaapcj3p9srz.cbetxkdyhwsb.us-east-1.rds.amazonaws.com",
-    user: "pt9o45jlc8mfql6a",
-    password: "j713t4qjjvej3s00",
-    database: "sxc7jag8se2txrqk",
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
     waitForConnections: true,
     connectionLimit: 10
 });
@@ -154,10 +147,9 @@ app.get('/search', async (req, res) => {
             }));
         }
 
-        // Web Search (Spoonacular API)
+        // Web Search (Spoonacular API via RapidAPI)
         if (webSearch === 'on') {
             const params = new URLSearchParams({
-                apiKey: SPOONACULAR_API_KEY,
                 number: 12,
                 addRecipeInformation: true,
                 fillIngredients: false
@@ -206,16 +198,13 @@ app.get('/search', async (req, res) => {
             }
 
             try {
-                // ============================================================
-                // TODO (@matthias): TEMPORARY - Conditional headers for RapidAPI
-                // ============================================================
-                const fetchOptions = useRapidAPI ? {
+                const fetchOptions = {
                     method: 'GET',
                     headers: {
-                        'x-rapidapi-key': SPOONACULAR_API_KEY,
+                        'x-rapidapi-key': RAPIDAPI_KEY,
                         'x-rapidapi-host': 'spoonacular-recipe-food-nutrition-v1.p.rapidapi.com'
                     }
-                } : {};
+                };
 
                 const response = await fetch(`${SPOONACULAR_BASE_URL}/recipes/complexSearch?${params}`, fetchOptions);
                 const data = await response.json();
@@ -231,13 +220,7 @@ app.get('/search', async (req, res) => {
                         let fat = 0, carb = 0, protein = 0;
                         
                         try {
-                            // ============================================================
-                            // TODO (@matthias): TEMPORARY - Conditional URL and headers
-                            // ============================================================
-                            const nutritionUrl = useRapidAPI
-                                ? `${SPOONACULAR_BASE_URL}/recipes/${recipe.id}/nutritionWidget.json`
-                                : `${SPOONACULAR_BASE_URL}/recipes/${recipe.id}/nutritionWidget.json?apiKey=${SPOONACULAR_API_KEY}`;
-                            
+                            const nutritionUrl = `${SPOONACULAR_BASE_URL}/recipes/${recipe.id}/nutritionWidget.json`;
                             const nutritionResponse = await fetch(nutritionUrl, fetchOptions);
                             const nutritionData = await nutritionResponse.json();
                             
@@ -720,6 +703,7 @@ app.get("/recipe/:id", async (req, res) => {
 });
 
 // Start server
-app.listen(3000, () => {
-    console.log("SmartBite server running on port 3000");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`SmartBite server running on port ${PORT}`);
 });
